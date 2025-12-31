@@ -11,14 +11,16 @@ export class GeminiService {
         lastError = error;
         const errorStr = JSON.stringify(error).toLowerCase();
         
+        // Handle explicit limit 0 errors (usually means project not set up or key restricted)
         if (errorStr.includes('limit: 0') || errorStr.includes('limit:0')) {
           console.error("Critical: API Key tier insufficient (limit: 0).");
           throw new Error("PAID_KEY_REQUIRED");
         }
 
-        const status = error?.status || (errorStr.includes('429') ? 429 : errorStr.includes('503') ? 503 : 0);
+        const status = error?.status || (errorStr.includes('429') ? 429 : errorStr.includes('500') ? 500 : errorStr.includes('503') ? 503 : 0);
         
-        if (status === 429 || status === 503 || errorStr.includes('overloaded') || errorStr.includes('quota') || errorStr.includes('exhausted')) {
+        // Retry on transient errors: 429 (Rate Limit), 500 (Internal), 503 (Service Unavailable)
+        if (status === 429 || status === 500 || status === 503 || errorStr.includes('overloaded') || errorStr.includes('quota') || errorStr.includes('exhausted')) {
           const delay = Math.pow(2, i) * 3000 + Math.random() * 1000;
           console.warn(`API Error (${status}). Retrying in ${Math.round(delay)}ms... (Attempt ${i + 1}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -67,12 +69,17 @@ export class GeminiService {
     return this.withRetry(async () => {
       const apiKey = process.env.API_KEY || '';
       const ai = new GoogleGenAI({ apiKey });
-      const fullPrompt = `${prompt}. The image MUST include the English text "To: Mumu & Yiyi - By Daddy" clearly rendered as part of the illustration's dedication.`;
+      // Simplify prompt for image model to avoid internal errors
+      const fullPrompt = `${prompt}. Child-friendly illustration. The text "To: Mumu & Yiyi - By Daddy" must be visible.`;
       
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts: [{ text: fullPrompt }] },
-        config: { imageConfig: { aspectRatio: "4:3" } }
+        config: { 
+          imageConfig: { 
+            aspectRatio: "1:1" // 1:1 is most stable for flash-image
+          } 
+        }
       });
 
       const candidate = response.candidates?.[0];
