@@ -32,7 +32,8 @@ export class GeminiService {
 
   async generateStories(): Promise<Story[]> {
     return this.withRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: "请为4岁宝宝生成10个原创、温馨且幽默的睡前故事。主要角色固定为：小熊嘟嘟（憨萌、爱讲冷笑话）和小兔闹闹（古灵精怪、点子大王）。【重要：请随机地将‘Mumu’、‘Yiyi’、‘爸爸’或‘妈妈’作为配角编入每个故事中】。每个故事约350-450个汉字。输出JSON数组，包含：id, title, theme, content, audioGuidance, posterPrompt。其中posterPrompt必须要求包含文字'To: Mumu & Yiyi - By Daddy'，风格为温馨可爱的水彩绘本感。",
@@ -64,7 +65,8 @@ export class GeminiService {
 
   async generatePoster(prompt: string): Promise<string> {
     return this.withRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey });
       const fullPrompt = `${prompt}. The image MUST include the English text "To: Mumu & Yiyi - By Daddy" clearly rendered as part of the illustration's dedication.`;
       
       const response = await ai.models.generateContent({
@@ -76,7 +78,7 @@ export class GeminiService {
       const candidate = response.candidates?.[0];
       if (!candidate) throw new Error("No image generated (No candidate returned)");
 
-      if (candidate.finishReason === 'SAFETY') {
+      if (candidate.finishReason === 'SAFETY' as any) {
         throw new Error("Image generation blocked by safety filters.");
       }
 
@@ -95,7 +97,8 @@ export class GeminiService {
 
   async textToSpeech(text: string): Promise<string> {
     return this.withRetry(async () => {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: `请用温柔深情、略带磁性的爸爸的声音朗读：\n\n${text}` }] }],
@@ -114,7 +117,8 @@ export class GeminiService {
   }
 
   async transcribeAudio(audioData: string): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || '';
+    const ai = new GoogleGenAI({ apiKey });
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash-native-audio-preview-09-2025',
       contents: {
