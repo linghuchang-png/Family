@@ -38,6 +38,7 @@ export class GeminiService {
       // Re-initialize to ensure we use the current API key from process.env
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
+        // Using gemini-3-flash-preview for basic text task
         model: 'gemini-3-flash-preview',
         contents: "请为4岁宝宝生成10个原创、温馨且幽默的睡前故事。主要角色固定为：小熊嘟嘟（憨萌、爱讲冷笑话）和小兔闹闹（古灵精怪、点子大王）。【重要：请随机地将‘Mumu’、‘Yiyi’、‘爸爸’或‘妈妈’作为配角编入每个故事中】。每个故事约350-450个汉字。输出JSON数组，包含：id, title, theme, content, audioGuidance, posterPrompt。其中posterPrompt必须要求包含文字'To: Mumu & Yiyi - By Daddy'，风格为温馨可爱的水彩绘本感。",
         config: {
@@ -60,6 +61,7 @@ export class GeminiService {
         },
       });
 
+      // Extracting text output from GenerateContentResponse using .text property
       const text = response.text;
       if (!text) throw new Error("Empty AI response");
       return JSON.parse(text);
@@ -69,19 +71,33 @@ export class GeminiService {
   async generatePoster(prompt: string): Promise<string> {
     return this.withRetry(async () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Inject the text requirement directly into the prompt to ensure compliance
+      const fullPrompt = `${prompt}. The image MUST include the English text "To: Mumu & Yiyi - By Daddy" clearly rendered as part of the illustration's dedication.`;
+      
       const response = await ai.models.generateContent({
+        // Use gemini-2.5-flash-image for standard image generation tasks
         model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: prompt }] },
+        contents: { parts: [{ text: fullPrompt }] },
         config: { imageConfig: { aspectRatio: "4:3" } }
       });
 
       const candidate = response.candidates?.[0];
-      if (!candidate?.content?.parts) throw new Error("No image generated");
+      if (!candidate) throw new Error("No image generated (No candidate returned)");
 
-      for (const part of candidate.content.parts) {
-        if (part.inlineData) return part.inlineData.data;
+      if (candidate.finishReason === 'SAFETY') {
+        throw new Error("Image generation blocked by safety filters.");
       }
-      throw new Error("Missing inlineData in image response");
+
+      if (!candidate.content?.parts) throw new Error("No parts in the generated content");
+
+      let refusalText = "";
+      for (const part of candidate.content.parts) {
+        // Find the image part, do not assume it is the first part.
+        if (part.inlineData) return part.inlineData.data;
+        if (part.text) refusalText += part.text;
+      }
+      
+      throw new Error(refusalText || "Missing inlineData in image response");
     });
   }
 
@@ -89,6 +105,7 @@ export class GeminiService {
     return this.withRetry(async () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
+        // Use gemini-2.5-flash-preview-tts for text-to-speech tasks
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: `请用温柔深情、略带磁性的爸爸的声音朗读：\n\n${text}` }] }],
         config: {
@@ -108,25 +125,29 @@ export class GeminiService {
   async transcribeAudio(audioData: string): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      // Use the native audio model for handling audio input prompts
+      model: 'gemini-2.5-flash-native-audio-preview-09-2025',
       contents: {
         parts: [
+          // Use 'audio/pcm' for raw audio streams as per guidelines
           { inlineData: { mimeType: 'audio/pcm;rate=16000', data: audioData } },
           { text: "Transcription in Simplified Chinese." }
         ]
       }
     });
+    // Use .text property to get the generated transcription
     return response.text || "";
   }
 }
 
+// Custom decoding function for raw PCM audio data
 export async function decodeAudioData(
   data: Uint8Array,
   ctx: AudioContext,
   sampleRate: number = 24000,
   numChannels: number = 1
 ): Promise<AudioBuffer> {
-  // Use slice to ensure we aren't passing a TypedArray with an offset that might confuse Int16Array
+  // Use slice to ensure we aren't passing a TypedArray with an offset
   const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
   const dataInt16 = new Int16Array(arrayBuffer);
   const frameCount = dataInt16.length / numChannels;
@@ -141,6 +162,7 @@ export async function decodeAudioData(
   return buffer;
 }
 
+// Manual implementation of base64 encoding/decoding as required
 export function base64ToUint8Array(base64: string): Uint8Array {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
