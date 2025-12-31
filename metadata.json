@@ -1,0 +1,7 @@
+{
+  "name": "宝贝睡前小故事",
+  "description": "A gentle, child-friendly storybook app with AI-powered narration, image generation, and voice transcription, dedicated to 莯莯 and 依依.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
